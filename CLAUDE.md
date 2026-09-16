@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`liferay-db-setup-core` is a Liferay 7.4 OSGi module that creates Liferay portal data (roles, sites, pages, users, custom fields, permissions, service access policies, etc.) from a declarative XML file - "data as code". Distributed via Maven Central as `com.ableneo.liferay:com.ableneo.liferay.db.setup.core`.
+`liferay-db-setup-core` is a Liferay DXP OSGi module that creates Liferay portal data (roles, sites, pages, users, custom fields, permissions, service access policies, etc.) from a declarative XML file - "data as code". Distributed via Maven Central as `com.ableneo.liferay:com.ableneo.liferay.db.setup.core`.
 
-- Liferay version: 7.4.3.125-ga125 (see compatibility matrix in README.adoc)
+- Liferay version: DXP 2026.Q1.9 (see compatibility matrix in README.adoc). Liferay Portal CE ended at 7.4.3.132, the library targets DXP quarterly releases only.
+- Liferay artifacts are resolved from `https://repository-cdn.liferay.com/nexus/content/groups/public`, they are no longer published to Maven Central.
+- The portal is Jakarta based: use `jakarta.portlet` and `jakarta.xml.bind`, never the `javax` equivalents.
 - Java 21 (with `--enable-preview`), Maven 3.8.1+, BND for OSGi manifest
 - `nix-shell` (or direnv) provides a ready build environment - see CONTRIBUTING.adoc
 
@@ -98,9 +100,9 @@ public class SetupFoo {
 ## OSGi & Dependencies
 
 - `bnd.bnd`: all imports `resolution:=optional`, exports only `com.ableneo.*`, `-noee: true`. Keep it that way.
-- Liferay/OSGi APIs available in the runtime container are `provided` scope - never `compile`. This includes `release.portal.api`, dom4j, and SLF4J.
-- Versions come from `release.portal.bom` / `release.portal.bom.third.party` BOMs - do not hardcode versions for Liferay artifacts.
-- Dependencies that must be bundled at runtime go into the maven-shade-plugin config.
+- Liferay/OSGi APIs available in the runtime container are `provided` scope - never `compile`. This includes `release.dxp.api`, dom4j, and SLF4J.
+- Versions come from `release.dxp.bom` / `release.dxp.bom.third.party` BOMs - do not hardcode versions for Liferay artifacts.
+- The bundle ships only `com.ableneo.*` classes. Never depend on a Liferay `internal` package - those disappear between releases without notice; reimplement what you need instead.
 
 ## Testing
 
@@ -115,6 +117,6 @@ public class SetupFoo {
 
 ## Versioning & Release
 
-- Version format: `<liferay-major>.<liferay-minor>.<liferay-patch-ga>.<module-revision>[-SNAPSHOT]`, e.g. `7.4.3125.2-SNAPSHOT` targets Liferay 7.4 GA125.
+- Version format: `<liferay-year>.<liferay-quarter>.<liferay-patch>.<module-revision>[-SNAPSHOT]`, e.g. `2026.1.9.0-SNAPSHOT` targets Liferay DXP 2026.Q1.9. Versions up to `7.4.3125.2` used the older `<liferay-major>.<liferay-minor>.<liferay-patch-ga>.<module-revision>` scheme.
 - Releases use `maven-release-plugin` (see `maven-central-*.sh` scripts) - do not manually edit the version in `pom.xml`.
 - Commit messages reference GitHub issues (`fix broken feature #1`); update the README.adoc changelog for user-facing changes.

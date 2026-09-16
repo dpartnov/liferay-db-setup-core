@@ -1,0 +1,129 @@
+= Local demo environment
+:liferay-version: 2026.Q1.9
+:elasticsearch-version: 8.19.11
+:toc:
+
+A throwaway Liferay DXP {liferay-version} with a Elasticsearch {elasticsearch-version},
+used to try the library out and to verify it after a Liferay upgrade.
+
+Once deployed, the demo bundle creates a complete site from XML: roles, users, user groups,
+organizations, custom fields, permissions, a site with categories, web content, documents, pages
+and a navigation menu. Every data type the library supports has an example in
+link:../com.ableneo.liferay.site.example/src/main/resources/setup[the setup files].
+
+== Quick start
+
+[source,shell]
+----
+docker compose up -d                 # first run pulls ~3 GB and takes a few minutes
+docker compose logs -f liferay       # wait for "Server startup in ... milliseconds"
+./build-and-deploy.sh                # builds and deploys the library and the demo bundle
+docker compose logs -f liferay       # watch the setup create the data
+----
+
+IMPORTANT: Start the portal first and deploy afterwards. A setup file touches data owned by
+modules that are registered late during startup - the permission check behind custom fields, the
+data engine behind web content structures, the search indexers. A setup that runs while the
+portal is still booting fails on them, which is why the demo bundle is not installed at startup.
+The script refuses to run if the container is not up.
+
+Once the setup finished, open:
+
+* http://localhost:8080/web/demo-site/home[The demo site] - the site created from XML
+* http://localhost:8080[The portal] - sign in as `test@liferay.com` / `test`
+
+To start over, `docker compose down -v` removes the database and the search index as well.
+
+== What is in the box
+
+|===
+|Service |Image |Ports
+
+|`liferay`
+|`liferay/dxp:2026.q1.9-lts`
+|8080 (portal), 11311 (Gogo shell)
+
+|`elasticsearch`
+|`docker.elastic.co/elasticsearch/elasticsearch:{elasticsearch-version}` plus the Liferay analysis plugins
+|9200
+|===
+
+The Liferay container uses the embedded HSQLDB, so no database container is needed. That keeps
+the compose file short at the price of performance, which does not matter for a demo. Do not use
+this setup for anything but local experiments.
+
+`./liferay` is mounted as `/mnt/liferay`, which is the convention of the official images:
+
+* `liferay/files` is copied over `/opt/liferay` on startup and holds `portal-ext.properties` and
+  the OSGi configuration that points Liferay at the Elasticsearch container
+* `liferay/deploy` is watched for hot deploy and receives the bundles; Liferay removes them from
+  there once installed, so seeing it empty is expected
+
+=== Elasticsearch
+
+Liferay refuses to create its indexes unless Elasticsearch has the `analysis-icu`,
+`analysis-kuromoji`, `analysis-smartcn` and `analysis-stempel` plugins, which is why
+`elasticsearch/Dockerfile` installs them on top of the official image.
+
+The Elasticsearch version has to match the one Liferay ships as its own sidecar. After a Liferay
+upgrade, read the new version from the portal source at
+`modules/apps/portal-search-elasticsearch8/portal-search-elasticsearch8-impl/src/main/resources/META-INF/sidecar/sidecar.version`
+and update `ELASTICSEARCH_VERSION` in `docker-compose.yml`.
+
+== How the setup files are applied
+
+The demo bundle applies the setup files from a `PortalInstanceLifecycleListener`, see
+`DemoPortalInstanceLifecycleListener`. The listener runs on every deploy, which suits a demo: the
+setup files are idempotent and re-applying them takes a few seconds.
+
+Two other mechanisms are shipped as disabled components, so you can see all three:
+
+`DemoUpgradeStepRegistrator` registers the files as versioned upgrade steps:
+
+[source,java]
+----
+registry.register("0.0.0", "1.0.0", new SetupXmlUpgradeProcess("setup/01-security.xml"));
+registry.register("1.0.0", "1.1.0", new SetupXmlUpgradeProcess("setup/02-content.xml"));
+registry.register("1.1.0", "1.2.0", new SetupXmlUpgradeProcess("setup/03-pages.xml"));
+----
+
+Liferay records the version each module reached in the `Release_` table, so every step runs once
+per virtual instance. Shipping new data means adding a file under a new version, not editing a
+file that was already released. This is the right mechanism for production data that only
+depends on the portal core; it is disabled here because upgrade steps run during startup.
+
+`Activator` applies the files on every bundle activation, which is the simplest of the three.
+
+Whichever you enable, keep exactly one of them active, otherwise the setup runs several times.
+
+=== Iterating on the setup files
+
+[source,shell]
+----
+./build-and-deploy.sh                      # rebuild and redeploy, the container picks the jar up
+docker compose logs -f liferay | grep -i ableneo
+----
+
+Redeploying the bundle re-runs all setup files. They are idempotent, so this updates the existing
+data instead of failing. To start from an empty portal, `docker compose down -v`, then
+`docker compose up -d` and run the script again once the portal is up.
+
+== Troubleshooting
+
+Check that both bundles are active:
+
+[source,shell]
+----
+docker compose exec liferay sh -c 'echo "lb | grep ableneo" | telnet localhost 11311'
+----
+
+The setup logs every entity it creates. Failures are logged per entity and do not stop the rest
+of the setup, so always read the whole step:
+
+[source,shell]
+----
+docker compose logs liferay | grep -E "com.ableneo|Setting up|Setup:"
+----
+
+Liferay DXP asks for an activation key. Without one the portal still starts and the demo works,
+it only shows a licensing warning. Drop your key into `liferay/deploy` if you have one.

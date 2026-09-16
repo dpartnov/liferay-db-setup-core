@@ -1,0 +1,58 @@
+## Local demo environment for liferay-db-setup-core.
+name: liferay-db-setup-core-demo
+
+services:
+  elasticsearch:
+    build:
+      context: ./elasticsearch
+      args:
+        # Must match the version Liferay ships as its sidecar, see README.adoc
+        ELASTICSEARCH_VERSION: 8.19.11
+    container_name: lfr-demo-elasticsearch
+    environment:
+      - cluster.name=LiferayElasticsearchCluster
+      - bootstrap.memory_lock=true
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.ml.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+
+  liferay:
+    image: liferay/dxp:2026.q1.9-lts
+    container_name: lfr-demo-liferay
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      # Skip the setup wizard, the demo data is created by the library instead
+      - LIFERAY_SETUP_PERIOD_WIZARD_PERIOD_ENABLED=false
+      - LIFERAY_TERMS_PERIOD_OF_PERIOD_USE_PERIOD_REQUIRED=false
+      - LIFERAY_USERS_PERIOD_REMINDER_PERIOD_QUERIES_PERIOD_ENABLED=false
+      # Default administrator, used by the setup XML through run-as-user-email
+      - LIFERAY_DEFAULT_PERIOD_ADMIN_PERIOD_EMAIL_PERIOD_ADDRESS_PERIOD_PREFIX=test
+      - LIFERAY_JVM_OPTS=-Xms2g -Xmx2g
+    ports:
+      - "8080:8080"
+      # Gogo shell, handy for `telnet localhost 11311` and `lb | grep ableneo`
+      - "11311:11311"
+    volumes:
+      - ./liferay:/mnt/liferay
+      - liferay-data:/opt/liferay/data
+
+volumes:
+  elasticsearch-data:
+  liferay-data:
