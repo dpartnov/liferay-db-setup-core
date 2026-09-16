@@ -1,0 +1,86 @@
+{
+    "availableLanguageIds": [
+        "en_US"
+    ],
+    "contentType": "journal",
+    "dataDefinitionKey": "demo-article",
+    "defaultLanguageId": "en_US",
+    "dataDefinitionFields": [
+        {
+            "customProperties": {
+                "displayStyle": "singleline",
+                "fieldNamespace": "",
+                "fieldReference": "headline",
+                "requireConfirmation": false,
+                "tooltip": {
+                    "en_US": ""
+                }
+            },
+            "fieldType": "text",
+            "indexType": "keyword",
+            "indexable": true,
+            "label": {
+                "en_US": "Headline"
+            },
+            "localizable": true,
+            "name": "Headline12345678",
+            "readOnly": false,
+            "repeatable": false,
+            "required": true,
+            "showLabel": true,
+            "visible": true
+        },
+        {
+            "customProperties": {
+                "displayStyle": "multiline",
+                "fieldNamespace": "",
+                "fieldReference": "body",
+                "requireConfirmation": false,
+                "tooltip": {
+                    "en_US": ""
+                }
+            },
+            "fieldType": "text",
+            "indexType": "text",
+            "indexable": true,
+            "label": {
+                "en_US": "Body"
+            },
+            "localizable": true,
+            "name": "Body87654321",
+            "readOnly": false,
+            "repeatable": false,
+            "required": false,
+            "showLabel": true,
+            "visible": true
+        }
+    ],
+    "defaultDataLayout": {
+        "dataLayoutPages": [
+            {
+                "dataLayoutRows": [
+                    {
+                        "dataLayoutColumns": [
+                            {
+                                "columnSize": 12,
+                                "fieldNames": [
+                                    "Headline12345678"
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "dataLayoutColumns": [
+                            {
+                                "columnSize": 12,
+                                "fieldNames": [
+                                    "Body87654321"
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+}

@@ -68,7 +68,9 @@ public final class SetupUsers {
         final User liferayUser,
         final com.ableneo.liferay.portal.setup.domain.User user
     ) {
-        Class clazz = liferayUser.getClass();
+        // Expando tables are keyed by the model interface, not by the implementation class that
+        // liferayUser.getClass() would return.
+        Class clazz = User.class;
         for (CustomFieldSetting cfs : user.getCustomFieldSetting()) {
             String resolverHint =
                 "Custom value for user " +

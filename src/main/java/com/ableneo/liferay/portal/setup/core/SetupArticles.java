@@ -1,6 +1,7 @@
 package com.ableneo.liferay.portal.setup.core;
 
 import com.ableneo.liferay.portal.setup.SetupConfigurationThreadLocal;
+import com.ableneo.liferay.portal.setup.core.util.DataDefinitionUtil;
 import com.ableneo.liferay.portal.setup.core.util.ResolverUtil;
 import com.ableneo.liferay.portal.setup.core.util.ResourcesUtil;
 import com.ableneo.liferay.portal.setup.core.util.ServiceTrackerBuilder;
@@ -21,25 +22,33 @@ import com.liferay.asset.kernel.service.AssetEntryLocalServiceUtil;
 import com.liferay.asset.link.constants.AssetLinkConstants;
 import com.liferay.asset.link.service.AssetLinkLocalServiceUtil;
 import com.liferay.data.engine.rest.dto.v2_0.DataDefinition;
+import com.liferay.data.engine.rest.dto.v2_0.util.DataDefinitionDDMFormUtil;
 import com.liferay.data.engine.rest.resource.v2_0.DataDefinitionResource;
 import com.liferay.dynamic.data.lists.model.DDLRecordSet;
 import com.liferay.dynamic.data.lists.service.DDLRecordSetLocalServiceUtil;
+import com.liferay.dynamic.data.mapping.constants.DDMStructureConstants;
 import com.liferay.dynamic.data.mapping.constants.DDMTemplateConstants;
 import com.liferay.dynamic.data.mapping.exception.TemplateDuplicateTemplateKeyException;
+import com.liferay.dynamic.data.mapping.form.field.type.DDMFormFieldTypeServicesRegistry;
+import com.liferay.dynamic.data.mapping.model.DDMForm;
+import com.liferay.dynamic.data.mapping.model.DDMFormField;
+import com.liferay.dynamic.data.mapping.model.DDMFormLayout;
+import com.liferay.dynamic.data.mapping.model.DDMFormLayoutColumn;
+import com.liferay.dynamic.data.mapping.model.DDMFormLayoutPage;
+import com.liferay.dynamic.data.mapping.model.DDMFormLayoutRow;
 import com.liferay.dynamic.data.mapping.model.DDMStructure;
 import com.liferay.dynamic.data.mapping.model.DDMTemplate;
 import com.liferay.dynamic.data.mapping.service.DDMStructureLocalServiceUtil;
 import com.liferay.dynamic.data.mapping.service.DDMTemplateLocalServiceUtil;
+import com.liferay.dynamic.data.mapping.storage.StorageType;
 import com.liferay.journal.constants.JournalArticleConstants;
 import com.liferay.journal.model.JournalArticle;
 import com.liferay.journal.model.JournalFolder;
 import com.liferay.journal.service.JournalArticleLocalServiceUtil;
-import com.liferay.journal.web.internal.util.DataDefinitionUtil;
 import com.liferay.petra.string.StringPool;
 import com.liferay.portal.kernel.exception.PortalException;
 import com.liferay.portal.kernel.exception.SystemException;
 import com.liferay.portal.kernel.model.role.RoleConstants;
-import com.liferay.portal.kernel.search.DocumentImpl;
 import com.liferay.portal.kernel.search.Indexer;
 import com.liferay.portal.kernel.search.IndexerRegistryUtil;
 import com.liferay.portal.kernel.security.permission.ActionKeys;
@@ -55,17 +64,14 @@ import com.liferay.portal.kernel.util.PortalUtil;
 import com.liferay.portal.kernel.util.StringUtil;
 import com.liferay.portal.kernel.util.Validator;
 import com.liferay.portal.kernel.workflow.WorkflowConstants;
-import com.liferay.portal.kernel.xml.Document;
-import com.liferay.portal.kernel.xml.Element;
-import com.liferay.portal.xml.ElementImpl;
+import com.liferay.portal.kernel.xml.DocumentException;
+import com.liferay.portal.kernel.xml.SAXReaderUtil;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import org.dom4j.tree.DefaultText;
-import org.dom4j.util.IndexedElement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,6 +86,7 @@ public final class SetupArticles {
     private static final int ARTICLE_PUBLISH_YEAR = 2008;
     private static final int MIN_DISPLAY_ROWS = 10;
     private static ServiceTrackerBuilder<DataDefinitionResource.Factory> dataDefinitionResourceFactoryTracker;
+    private static ServiceTrackerBuilder<DDMFormFieldTypeServicesRegistry> ddmFormFieldTypeServicesRegistryTracker;
 
     static {
         DEFAULT_PERMISSIONS = new HashMap<>();
@@ -194,41 +201,46 @@ public final class SetupArticles {
             content = ResourcesUtil.getFileContent(structure.getPath());
             DataDefinition dataDefinition = DataDefinition.toDTO(content);
 
+            if (dataDefinition == null) {
+                LOG.error(
+                    "Could not read {} as a data definition. The file has to be in the format of the data engine " +
+                    "REST API, see the demo structure in the example project.",
+                    structure.getPath()
+                );
+                return;
+            }
+
             dataDefinition.setName(() ->
                 HashMapBuilder.<String, Object>put(String.valueOf(siteDefaultLocale), structure.getName()).build()
             );
-
-            DataDefinitionResource.Builder dataDefinitionResourcedBuilder = getDataDefinitionResourceFactory().create();
-
-            DataDefinitionResource dataDefinitionResource = dataDefinitionResourcedBuilder
-                .user(UserLocalServiceUtil.getUser(SetupConfigurationThreadLocal.getRunAsUserId()))
-                .build();
 
             DDMStructure ddmStructure = DDMStructureLocalServiceUtil.fetchStructure(
                 groupId,
                 classNameId,
                 structure.getKey()
             );
+            DataDefinitionUtil.updateDataDefinitionFields(dataDefinition, ddmStructure);
 
-            if (ddmStructure == null) {
-                LOG.info("Adding article structure {}", structure.getName());
-                DataDefinitionUtil.updateDataDefinitionFields(dataDefinition, null);
-                dataDefinition = dataDefinitionResource.postSiteDataDefinitionByContentType(
-                    groupId,
-                    "journal",
-                    dataDefinition
-                );
+            long structureId;
+
+            if (classNameId == ClassNameLocalServiceUtil.getClassNameId(JournalArticle.class)) {
+                structureId = addOrUpdateJournalStructure(dataDefinition, ddmStructure, structure, groupId);
             } else {
-                LOG.info("Updating article structure {}", structure.getName());
-                DataDefinitionUtil.updateDataDefinitionFields(dataDefinition, ddmStructure);
-                dataDefinition.setId(ddmStructure.getStructureId());
-                dataDefinition = dataDefinitionResource.putDataDefinition(dataDefinition.getId(), dataDefinition);
+                structureId = addOrUpdateStructure(
+                    dataDefinition,
+                    ddmStructure,
+                    structure,
+                    groupId,
+                    classNameId,
+                    siteDefaultLocale
+                );
             }
+
             SetupPermissions.updatePermission(
                 String.format("Structure %s", structure.getKey()),
                 SetupConfigurationThreadLocal.getRunInCompanyId(),
-                dataDefinition.getId(),
-                DDMStructure.class.getName() + "-" + JournalArticle.class.getName(),
+                structureId,
+                DDMStructure.class.getName() + "-" + ClassNameLocalServiceUtil.getClassName(classNameId).getValue(),
                 structure.getRolePermissions(),
                 DEFAULT_DDM_PERMISSIONS
             );
@@ -243,11 +255,144 @@ public final class SetupArticles {
         }
     }
 
+    /**
+     * Creates or updates a web content structure through the data engine, which is what the
+     * Liferay UI does as well.
+     *
+     * @return the id of the structure
+     */
+    private static long addOrUpdateJournalStructure(
+        DataDefinition dataDefinition,
+        final DDMStructure ddmStructure,
+        final StructureType structure,
+        final long groupId
+    ) throws Exception {
+        DataDefinitionResource dataDefinitionResource = getDataDefinitionResourceFactory()
+            .create()
+            .user(UserLocalServiceUtil.getUser(SetupConfigurationThreadLocal.getRunAsUserId()))
+            .build();
+
+        if (ddmStructure == null) {
+            LOG.info("Adding article structure {}", structure.getName());
+            dataDefinition = dataDefinitionResource.postSiteDataDefinitionByContentType(
+                groupId,
+                "journal",
+                dataDefinition
+            );
+        } else {
+            LOG.info("Updating article structure {}", structure.getName());
+            dataDefinition.setId(ddmStructure.getStructureId());
+            dataDefinition = dataDefinitionResource.putDataDefinition(dataDefinition.getId(), dataDefinition);
+        }
+
+        return dataDefinition.getId();
+    }
+
+    /**
+     * Creates or updates a structure of any other class, for example a dynamic data list.
+     *
+     * <p>
+     * The data engine only knows a content type for web content and for the document library, so
+     * anything else has to go through the plain DDM service. Sending such a structure to
+     * {@code postSiteDataDefinitionByContentType} would register it against
+     * {@code JournalArticle} instead of its own class, and the next setup run would no longer
+     * find it by key.
+     * </p>
+     *
+     * @return the id of the structure
+     */
+    private static long addOrUpdateStructure(
+        final DataDefinition dataDefinition,
+        final DDMStructure ddmStructure,
+        final StructureType structure,
+        final long groupId,
+        final long classNameId,
+        final Locale siteDefaultLocale
+    ) throws PortalException {
+        DDMForm ddmForm = DataDefinitionDDMFormUtil.toDDMForm(dataDefinition, getDDMFormFieldTypeServicesRegistry());
+        DDMFormLayout ddmFormLayout = toDDMFormLayout(ddmForm);
+
+        Map<Locale, String> nameMap = HashMapBuilder.put(siteDefaultLocale, getStructureNameOrKey(structure)).build();
+
+        ServiceContext serviceContext = new ServiceContext();
+        serviceContext.setScopeGroupId(groupId);
+
+        if (ddmStructure == null) {
+            LOG.info("Adding structure {}", structure.getName());
+
+            DDMStructure addedStructure = DDMStructureLocalServiceUtil.addStructure(
+                null, // externalReferenceCode, generated by the portal
+                SetupConfigurationThreadLocal.getRunAsUserId(),
+                groupId,
+                DDMStructureConstants.DEFAULT_PARENT_STRUCTURE_ID,
+                classNameId,
+                structure.getKey(),
+                nameMap,
+                null,
+                ddmForm,
+                ddmFormLayout,
+                StorageType.JSON.getValue(),
+                DDMStructureConstants.TYPE_DEFAULT,
+                serviceContext
+            );
+
+            return addedStructure.getStructureId();
+        }
+
+        LOG.info("Updating structure {}", structure.getName());
+
+        DDMStructure updatedStructure = DDMStructureLocalServiceUtil.updateStructure(
+            SetupConfigurationThreadLocal.getRunAsUserId(),
+            ddmStructure.getStructureId(),
+            ddmStructure.getParentStructureId(),
+            nameMap,
+            ddmStructure.getDescriptionMap(),
+            ddmForm,
+            ddmFormLayout,
+            serviceContext
+        );
+
+        return updatedStructure.getStructureId();
+    }
+
+    /**
+     * Lays the fields out one per row, which is what the Liferay form builder produces for a
+     * structure that was never edited by hand.
+     */
+    private static DDMFormLayout toDDMFormLayout(final DDMForm ddmForm) {
+        DDMFormLayoutPage ddmFormLayoutPage = new DDMFormLayoutPage();
+
+        for (DDMFormField ddmFormField : ddmForm.getDDMFormFields()) {
+            DDMFormLayoutRow ddmFormLayoutRow = new DDMFormLayoutRow();
+            ddmFormLayoutRow.addDDMFormLayoutColumn(
+                new DDMFormLayoutColumn(DDMFormLayoutColumn.FULL, ddmFormField.getName())
+            );
+
+            ddmFormLayoutPage.addDDMFormLayoutRow(ddmFormLayoutRow);
+        }
+
+        DDMFormLayout ddmFormLayout = new DDMFormLayout();
+        ddmFormLayout.addDDMFormLayoutPage(ddmFormLayoutPage);
+        ddmFormLayout.setDefaultLocale(ddmForm.getDefaultLocale());
+        ddmFormLayout.setPaginationMode(DDMFormLayout.SINGLE_PAGE_MODE);
+
+        return ddmFormLayout;
+    }
+
     private static DataDefinitionResource.Factory getDataDefinitionResourceFactory() {
         if (dataDefinitionResourceFactoryTracker == null) {
             dataDefinitionResourceFactoryTracker = new ServiceTrackerBuilder<>(DataDefinitionResource.Factory.class);
         }
         return dataDefinitionResourceFactoryTracker.build().getService();
+    }
+
+    private static DDMFormFieldTypeServicesRegistry getDDMFormFieldTypeServicesRegistry() {
+        if (ddmFormFieldTypeServicesRegistryTracker == null) {
+            ddmFormFieldTypeServicesRegistryTracker = new ServiceTrackerBuilder<>(
+                DDMFormFieldTypeServicesRegistry.class
+            );
+        }
+        return ddmFormFieldTypeServicesRegistryTracker.build().getService();
     }
 
     private static String getStructureNameOrKey(final StructureType structure) {
@@ -511,7 +656,9 @@ public final class SetupArticles {
                     JournalArticleConstants.VERSION_DEFAULT,
                     titleMap,
                     descriptionMap,
-                    null,
+                    // friendlyURLMap, must not be null. Left empty so that the portal derives the
+                    // friendly URL from the title.
+                    new HashMap<>(),
                     content,
                     getDdmStructureId(article.getArticleStructureKey()),
                     article.getArticleTemplateKey(),
@@ -564,13 +711,11 @@ public final class SetupArticles {
                     article.getArticleId()
                 );
 
-                Document document = (Document) new DocumentImpl();
-                org.dom4j.Element domElement = new IndexedElement("content");
-                domElement.add(new DefaultText(content));
-                Element element = new ElementImpl(domElement);
-                document.add(element);
-                journalArticle.setDocument(document);
-                journalArticle.setDocument(document);
+                // The article content is already an XML document, so it is parsed as one. The
+                // previous implementation cast a com.liferay.portal.kernel.search.DocumentImpl
+                // to com.liferay.portal.kernel.xml.Document, which are unrelated types and
+                // always threw a ClassCastException on this branch.
+                journalArticle.setDocument(SAXReaderUtil.read(content));
                 journalArticle.setTitleMap(titleMap);
                 journalArticle.setDescriptionMap(descriptionMap);
 
@@ -586,7 +731,7 @@ public final class SetupArticles {
                     );
                 }
                 LOG.info("Updated JournalArticle: {}", journalArticle.getTitle());
-            } catch (PortalException e) {
+            } catch (DocumentException | PortalException e) {
                 LOG.error("Error while trying to update Article with Title: {}", article.getTitle(), e);
             }
         }
@@ -751,7 +896,10 @@ public final class SetupArticles {
             runAsUserId,
             groupId,
             ResolverUtil.getStructureId(recordSet.getDdlStructureKey(), groupId, DDLRecordSet.class.getName(), false),
-            recordSet.getDdlStructureKey(),
+            // recordSetKey. Passing the structure key here stored the record set under the wrong
+            // key, so the lookup above never found it again and a second setup run failed with a
+            // duplicate key.
+            recordSet.getKey(),
             nameMap,
             descMap,
             MIN_DISPLAY_ROWS,

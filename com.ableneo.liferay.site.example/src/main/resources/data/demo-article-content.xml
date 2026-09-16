@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Web content of a single article. The "name" attributes match the "name" of the fields in
+    demo-article-structure.json, "instance-id" only has to be unique within the article.
+-->
+<root available-locales="en_US" default-locale="en_US">
+    <dynamic-element name="Headline12345678" type="text" index-type="keyword" instance-id="demohead">
+        <dynamic-content language-id="en_US"><![CDATA[Created by liferay-db-setup-core]]></dynamic-content>
+    </dynamic-element>
+    <dynamic-element name="Body87654321" type="text" index-type="text" instance-id="demobody">
+        <dynamic-content language-id="en_US"><![CDATA[This article, the structure and the template it uses, the site, its pages and its navigation menu were all created from XML by the demo bundle. Edit the files under src/main/resources/setup and redeploy to see your changes applied.]]></dynamic-content>
+    </dynamic-element>
+</root>

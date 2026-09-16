@@ -110,8 +110,6 @@ public final class SetupDocuments {
                 if (fe == null) {
                     Folder folder = null;
                     if (Validator.isBlank(folderPath)) {
-                        folder = FolderUtil.findFolder(groupId, repoId, folderPath, true);
-                    } else {
                         try {
                             folder = DLAppLocalServiceUtil.getMountFolder(repoId);
                         } catch (PortalException e) {
@@ -121,6 +119,8 @@ public final class SetupDocuments {
                                 e
                             );
                         }
+                    } else {
+                        folder = FolderUtil.findFolder(groupId, repoId, folderPath, true);
                     }
                     if (folder != null) {
                         LOG.info("{} is not found! It will be created! (c: {},grp: {}", documentName, company, groupId);
@@ -139,6 +139,10 @@ public final class SetupDocuments {
                         documentName + " is found! Content will be updated! (c:" + company + ",grp:" + groupId + " "
                     );
                     DocumentUtil.updateFile(fe, fileBytes, userId, documentName);
+                }
+                if (fe == null) {
+                    LOG.error("Document {} could not be created, skipping its permissions", documentName);
+                    continue;
                 }
                 SetupPermissions.updatePermission(
                     String.format("Document %1$s/%2$s", folderPath, documentName),
