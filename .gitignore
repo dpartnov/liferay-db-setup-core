@@ -19,3 +19,6 @@ buildNumber.properties
 rebel.xml
 rebel-remote.xml
 .gradle
+
+# Demo environment artifacts
+docker/liferay/files/osgi/modules/*.jar

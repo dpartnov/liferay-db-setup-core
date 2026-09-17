@@ -60,9 +60,11 @@ import com.liferay.portal.kernel.util.UnicodeProperties;
 import com.liferay.portal.kernel.util.Validator;
 import com.liferay.site.navigation.model.SiteNavigationMenu;
 import com.liferay.site.navigation.service.SiteNavigationMenuLocalServiceUtil;
+import jakarta.portlet.ReadOnlyException;
 import java.math.BigInteger;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -71,7 +73,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
-import javax.portlet.ReadOnlyException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -565,12 +566,7 @@ public final class SetupPages {
             UnicodeProperties props = layout.getTypeSettingsProperties();
             props.put("url", linkToPageUrl);
             layout.setTypeSettingsProperties(props);
-            LayoutLocalServiceUtil.updateLayout(
-                layout.getGroupId(),
-                layout.isPrivateLayout(),
-                layout.getLayoutId(),
-                layout.getTypeSettings()
-            );
+            updateLayout(layout);
         } catch (PortalException | SystemException e) {
             LOG.error(
                 String.format(
@@ -603,12 +599,7 @@ public final class SetupPages {
                 props.put("url", page.getLinkToUrl());
                 layout.setTypeSettingsProperties(props);
                 layout.setHidden(page.isHidden());
-                LayoutLocalServiceUtil.updateLayout(
-                    layout.getGroupId(),
-                    layout.isPrivateLayout(),
-                    layout.getLayoutId(),
-                    layout.getTypeSettings()
-                );
+                updateLayout(layout);
             }
         } catch (PortalException | SystemException e) {
             LOG.error(
@@ -695,13 +686,8 @@ public final class SetupPages {
         props.put("target", page.getTarget());
         layout.setTypeSettingsProperties(props);
         try {
-            LayoutLocalServiceUtil.updateLayout(
-                layout.getGroupId(),
-                layout.isPrivateLayout(),
-                layout.getLayoutId(),
-                layout.getTypeSettings()
-            );
-        } catch (PortalException e) {
+            updateLayout(layout);
+        } catch (SystemException e) {
             LOG.error(
                 "Can not set target attribute value '" +
                 page.getTarget() +
@@ -718,17 +704,40 @@ public final class SetupPages {
         if (theme != null) {
             layout.setThemeId(theme.getName());
             try {
-                LayoutLocalServiceUtil.updateLayout(
-                    layout.getGroupId(),
-                    layout.isPrivateLayout(),
-                    layout.getLayoutId(),
-                    layout.getTypeSettings()
-                );
-            } catch (PortalException e) {
+                updateLayout(layout);
+            } catch (SystemException e) {
                 LOG.error("Error", e);
             }
             LOG.info(String.format("setting theme on page: %1$s : %2$s", page.getName(), theme.getName()));
         }
+    }
+
+    /**
+     * Persists the changes the setup made to a layout.
+     *
+     * <p>
+     * The row is read again before it is written. The {@code layout} instance the setup works
+     * with can be stale by the time it is persisted, because the portal updates the row itself
+     * while portlets are added to the page, and writing the stale instance fails with an
+     * optimistic lock exception. The overload of
+     * {@code LayoutLocalServiceUtil.updateLayout(groupId, privateLayout, layoutId, typeSettings)}
+     * that the setup used before Liferay DXP 2026.Q1 did the same re-read internally.
+     * </p>
+     */
+    private static void updateLayout(final Layout layout) {
+        Layout persistedLayout = LayoutLocalServiceUtil.fetchLayout(layout.getPlid());
+
+        if (persistedLayout == null) {
+            LayoutLocalServiceUtil.updateLayout(layout);
+            return;
+        }
+
+        persistedLayout.setTypeSettings(layout.getTypeSettings());
+        persistedLayout.setHidden(layout.isHidden());
+        persistedLayout.setThemeId(layout.getThemeId());
+        persistedLayout.setModifiedDate(new Date());
+
+        LayoutLocalServiceUtil.updateLayout(persistedLayout);
     }
 
     private static boolean isLinkPage(PageType page) {
@@ -1015,7 +1024,7 @@ public final class SetupPages {
             LOG.error("Add wrappedPortlet error ", e);
         }
 
-        javax.portlet.PortletPreferences preferences = PortletPreferencesLocalServiceUtil.getPreferences(
+        jakarta.portlet.PortletPreferences preferences = PortletPreferencesLocalServiceUtil.getPreferences(
             companyId,
             ownerId,
             ownerType,
@@ -1047,12 +1056,7 @@ public final class SetupPages {
         if (Validator.isNotNull(column) && Validator.isNotNull(portletIdInc)) {
             layoutTypePortlet.movePortletId(runAsUserId, portletIdInc, column, portlet.getColumnPosition());
         }
-        LayoutLocalServiceUtil.updateLayout(
-            layout.getGroupId(),
-            layout.isPrivateLayout(),
-            layout.getLayoutId(),
-            layout.getTypeSettings()
-        );
+        updateLayout(layout);
 
         if (portlet.getRolePermissions() != null) {
             LOG.info(" i portlet rights");
@@ -1177,12 +1181,7 @@ public final class SetupPages {
                         UserLocalServiceUtil.getDefaultUserId(layout.getCompanyId()),
                         layoutTemplate.getLayoutTemplateId()
                     );
-                    LayoutLocalServiceUtil.updateLayout(
-                        layout.getGroupId(),
-                        layout.isPrivateLayout(),
-                        layout.getLayoutId(),
-                        layout.getTypeSettings()
-                    );
+                    updateLayout(layout);
                 } else {
                     LOG.error(String.format("Layout template %1$s not found !", page.getLayout()));
                     if (themeId != null) {
@@ -1225,12 +1224,7 @@ public final class SetupPages {
                             ResourceConstants.SCOPE_INDIVIDUAL,
                             PortletPermissionUtil.getPrimaryKey(layout.getPlid(), portletId)
                         );
-                        LayoutLocalServiceUtil.updateLayout(
-                            layout.getGroupId(),
-                            layout.isPrivateLayout(),
-                            layout.getLayoutId(),
-                            layout.getTypeSettings()
-                        );
+                        updateLayout(layout);
                         List<PortletPreferences> list = PortletPreferencesLocalServiceUtil.getPortletPreferences(
                             PortletKeys.PREFS_OWNER_TYPE_LAYOUT,
                             layout.getPlid(),

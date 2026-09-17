@@ -1,0 +1,5 @@
+Bundle-Name: Liferay DB setup core demo
+Bundle-SymbolicName: com.ableneo.liferay.site.example
+## The bnd version used here does not know the Java 21 execution environment and would emit
+## "Require-Capability: osgi.ee=UNKNOWN", which no framework can resolve.
+-noee: true

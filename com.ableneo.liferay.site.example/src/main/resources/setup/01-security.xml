@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Step 1 of the demo: everything that is scoped to the virtual instance rather than to a site.
+
+    Covered data types: service access policies, roles with permissions, user groups, users,
+    custom fields (expando), resource permissions and organizations.
+
+    The order of the elements is fixed by setup_definition.xsd, not by the order in which the
+    library applies them. See the "Execution flow" section of CLAUDE.md.
+-->
+<setup xmlns="http://www.ableneo.com/liferay/setup">
+
+    <configuration>
+        <!-- Runs as the default administrator of the default virtual instance. -->
+        <company>
+            <companywebid>liferay.com</companywebid>
+        </company>
+    </configuration>
+
+    <!-- Service access policies open up remote services for headless/JSON web service calls. -->
+    <company-settings>
+        <service-access-policies>
+            <service-access-policy name="DB_SETUP_CORE_DEMO_POLICY" enabled="true" unauthenticated="false">
+                <title locale="en_US" text="Demo policy of liferay-db-setup-core"/>
+                <allowed-service-signatures>
+                    com.liferay.portal.kernel.service.CompanyService#getCompanyById
+                </allowed-service-signatures>
+            </service-access-policy>
+        </service-access-policies>
+    </company-settings>
+
+    <roles>
+        <!-- A regular (instance wide) role with portlet permissions granted to it. -->
+        <role name="Demo Editor">
+            <define-permissions>
+                <define-permission define-permission-name="com_liferay_journal_web_portlet_JournalPortlet" scope="portal">
+                    <permission-action action-name="ACCESS_IN_CONTROL_PANEL"/>
+                </define-permission>
+            </define-permissions>
+        </role>
+
+        <!-- A site role, scoped to the site created in step 2. -->
+        <role name="Demo Site Member" type="site"/>
+
+        <!-- An organization role. -->
+        <role name="Demo Organization Member" type="organization"/>
+    </roles>
+
+    <user-groups>
+        <user-group name="Demo Editors" description="Users allowed to edit the demo content">
+            <role name="Demo Editor"/>
+            <user-as-member screen-name="demo.editor"/>
+        </user-group>
+    </user-groups>
+
+    <users>
+        <!--
+            Only site and organization roles can be assigned to a user here. A regular role is
+            granted through a user group, as "Demo Editors" above does.
+        -->
+        <user screen-name="demo.editor" email-address="demo.editor@example.com" password="test"
+              first-name="Demo" last-name="Editor">
+            <custom-field-setting key="demo-user-note" value="Created by liferay-db-setup-core"/>
+        </user>
+    </users>
+
+    <organizations>
+        <organization name="Demo Organization">
+            <custom-field-setting key="demo-organization-note" value="Created by liferay-db-setup-core"/>
+            <organization name="Demo Sub Organization"/>
+        </organization>
+    </organizations>
+
+    <!-- Expando (custom) fields, created before any custom-field-setting is applied. -->
+    <custom-fields>
+        <field name="demo-user-note" type="string" class-name="com.liferay.portal.kernel.model.User"
+               display-type="text-box" indexed="keyword">
+            <role-permission role-name="User">
+                <permission-action action-name="VIEW"/>
+            </role-permission>
+        </field>
+        <field name="demo-organization-note" type="string"
+               class-name="com.liferay.portal.kernel.model.Organization"/>
+        <field name="demo-page-note" type="string" class-name="com.liferay.portal.kernel.model.Layout"/>
+    </custom-fields>
+
+</setup>

@@ -1,6 +1,6 @@
 = Liferay Portal DB setup core
-:liferay-version: 7.4.3.125
-:current-db-setup-core-version: 7.4.3125.2
+:liferay-version: 2026.Q1.9
+:current-db-setup-core-version: 2026.1.9.0
 :TOC:
 
 image:https://maven-badges.herokuapp.com/maven-central/com.ableneo.liferay/com.ableneo.liferay.db.setup.core/badge.svg?color=blue[Maven Central,link=https://search.maven.org/search?q=g:com.ableneo.liferay%20AND%20a:com.ableneo.liferay.db.setup.core]
@@ -10,6 +10,9 @@ image:https://sonarcloud.io/api/project_badges/measure?project=ableneo_liferay-d
 Library that allows to automate https://github.com/liferay[Liferay] data setup. It uses XML configuration input to add the data.
 
 == Compatibility matrix
+
+Starting with `{liferay-version}` the library targets Liferay DXP quarterly releases. Liferay stopped publishing
+Portal CE releases after `7.4.3.132`, so `7.4.3125.2` is the last version that runs on CE.
 
 |===
 |Liferay Portal version|DB setup core version
@@ -48,6 +51,19 @@ dependencies {
     <version>{current-db-setup-core-version}</version>
     <scope>provided</scope>
 </dependency>
+```
++
+Liferay DXP quarterly releases are not published to Maven Central. To resolve the Liferay artifacts your bundle needs
+the Liferay repository:
++
+.pom.xml
+```xml
+<repositories>
+    <repository>
+        <id>liferay-public</id>
+        <url>https://repository-cdn.liferay.com/nexus/content/groups/public</url>
+    </repository>
+</repositories>
 ```
 
 . Prepare xml data configuration. Documentation sits directly in the link:src/main/resources/setup_definition.xsd[setup_definition.xsd] file.
@@ -91,20 +107,86 @@ Setup setup = MarshallUtil.unmarshall(setupFile);
 boolean setupSuccess = LiferaySetup.setup(setup);
 ----
 
+==== Local demo environment
+
+The fastest way to see the library in action, and the environment used to verify it after a
+Liferay upgrade:
+
+[source,shell]
+----
+cd docker
+./build-and-deploy.sh
+docker compose up -d
+----
+
+This starts Liferay DXP {liferay-version} with a Elasticsearch and creates a complete
+demo site from XML. See link:./docker/README.adoc[docker/README.adoc].
+
 ==== Example project
 
-Used primarily for integration testing but may be a good start for your application: link:./com.ableneo.liferay.portal.setup.example/[com.ableneo.liferay.portal.setup.example]
+link:./com.ableneo.liferay.site.example/[com.ableneo.liferay.site.example] is the bundle the demo
+environment deploys. It is a good starting point for your own bundle and its
+link:./com.ableneo.liferay.site.example/src/main/resources/setup[setup files] contain a worked
+example of every data type this library supports:
+
+|===
+|File |Data types
+
+|`setup/01-security.xml`
+|service access policies, roles with permissions, user groups, users, custom fields, resource permissions, organizations
+
+|`setup/02-content.xml`
+|site with preferences and membership, vocabularies and categories, web content structures, templates, article folders and articles, application display templates, document folders and documents, dynamic data lists
+
+|`setup/03-pages.xml`
+|public and private pages, nested pages, portlets with preferences, page permissions and custom fields, page order, navigation menus, page templates
+|===
 
 === How to bundle and execute DB changes for Liferay portal
 
-Bundling XML descriptors and code that will execute them in bundle separate to the 
+Ship the XML descriptors and the code that executes them in your own bundle, and register the
+setup files as Liferay upgrade steps. Liferay records the schema version each module reached in
+the `Release_` table, so every step runs exactly once per virtual instance. Adding data later
+means adding a file under a new version rather than editing one that was already released.
 
 .Directory layout in bundle project
+----
+src/main/java/com/example/MyUpgradeStepRegistrator.java
+src/main/resources/setup/01-security.xml
+src/main/resources/data/article-structure.json
+----
 
-.Usage in activator class
+.Usage in an upgrade step registrator
 [source, java]
 ----
+@Component(service = UpgradeStepRegistrator.class)
+public class MyUpgradeStepRegistrator implements UpgradeStepRegistrator {
+
+    @Override
+    public void register(Registry registry) {
+        registry.registerInitialization();
+
+        registry.register("0.0.1", "1.0.0", new UpgradeProcess() {
+
+            @Override
+            protected void doUpgrade() throws Exception {
+                InputStream setupFile = MyUpgradeStepRegistrator.class.getClassLoader()
+                    .getResourceAsStream("setup/01-security.xml");
+
+                LiferaySetup.setup(
+                    MarshallUtil.unmarshall(setupFile),
+                    FrameworkUtil.getBundle(MyUpgradeStepRegistrator.class));
+            }
+        });
+    }
+}
 ----
+
+NOTE: Pass your bundle to `LiferaySetup.setup`. Every `path` attribute in the setup XML is then
+resolved as an entry of that bundle, which is how the structure, template and document files are
+found. The `BasicSetupUpgradeProcess` class shipped with this library resolves setup files
+through `java.io.File` against its own class loader, which does not work for files packaged in an
+OSGi bundle.
 
 === Configuration header
 All data definitions in the setup XML file are applied according to the `configuration` header. The header defines:
@@ -395,6 +477,24 @@ They are probably not perfect, please let me know if anything feels wrong or inc
 
 
 == Changelog
+
+=== Version 2026.1.9.0
+
+==== Bug fixes
+* `ddl-structure` is created with its own class again instead of being registered as a web content structure. Since `7.4.3125.0` every structure went through the data engine as `journal`, so a dynamic data list structure was not found by its key on the next run and the setup failed on a unique constraint
+* `ddl-recordset` is stored under its own `key` rather than under `ddl-structure-key`, so it is found on the next run instead of failing with a duplicate key
+* documents are uploaded into the folder named by `document-folder-name`. The folder and the repository root were swapped, so uploading into a named folder always failed with a `NoSuchFolderException`
+* `custom-field-setting` of a `user` is applied. It was looked up under the implementation class while expando tables are keyed by the model interface
+* an `article` that already exists is overwritten instead of failing with a `ClassCastException`
+* pages, portlet preferences and page themes are saved without an `OptimisticLockException`
+
+==== Refactorings & project changes
+* upgraded to Liferay DXP 2026.Q1.9, the library now targets DXP quarterly releases instead of Portal CE
+* Liferay artifacts are resolved from https://repository-cdn.liferay.com/nexus/content/groups/public, they are no longer published to Maven Central
+* migrated from `javax.portlet` and `javax.xml.bind` to `jakarta.portlet` and `jakarta.xml.bind`
+* replaced the internal `com.liferay.journal.web` `DataDefinitionUtil` with an own implementation, which removed the `maven-shade-plugin` and the dependency on a Liferay internal package
+* adopted the new `externalReferenceCode` parameter of `addGroup`, `addRole` and `addUserGroup`
+* switched the version scheme to `<liferay-year>.<liferay-quarter>.<liferay-patch>.<module-revision>`
 
 === Version 7.4.3125.3
 ==== Features & bug fixes
