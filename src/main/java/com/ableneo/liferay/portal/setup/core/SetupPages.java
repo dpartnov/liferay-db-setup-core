@@ -613,23 +613,29 @@ public final class SetupPages {
         }
     }
 
+    /**
+     * Creates the layout of a page.
+     * The name and the title of the layout are built from two separate maps. Only the title is
+     * translatable, the name is the technical page name and is written for the site default
+     * locale alone.
+     */
     private static Layout createPage(
         final long groupId,
         final PageType currentPage,
         final long parentLayoutId,
         final boolean isPrivate
     ) throws PortalException {
+        Locale locale = LocaleUtil.getSiteDefault();
+
+        Map<Locale, String> nameMap = new HashMap<>();
+        nameMap.put(locale, currentPage.getName());
+
         Map<Locale, String> titleMap = TranslationMapUtil.getTranslationMap(
             currentPage.getTitleTranslation(),
             groupId,
             currentPage.getName(),
             String.format(" Page with title %1$s", currentPage.getFriendlyUrl())
         );
-
-        Locale locale = LocaleUtil.getSiteDefault();
-
-        Map<Locale, String> descriptionMap = new HashMap<>();
-        descriptionMap.put(locale, StringPool.BLANK);
 
         Map<Locale, String> friendlyURLMap = new HashMap<>();
         friendlyURLMap.put(locale, currentPage.getFriendlyUrl());
@@ -640,7 +646,7 @@ public final class SetupPages {
             groupId,
             isPrivate,
             parentLayoutId,
-            titleMap,
+            nameMap,
             titleMap,
             null,
             null,
