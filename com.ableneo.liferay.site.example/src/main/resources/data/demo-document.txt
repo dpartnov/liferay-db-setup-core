@@ -1,0 +1,2 @@
+This file was uploaded into the Documents and Media library of the demo site by
+liferay-db-setup-core, see setup/02-content.xml.

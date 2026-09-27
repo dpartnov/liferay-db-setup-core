@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Step 2 of the demo: the site and everything stored inside it.
+
+    Covered data types: site with preferences and membership, categorization (vocabularies and
+    categories), web content structures, templates and articles, article folders, application
+    display templates, document folders and documents, dynamic data lists.
+
+    Every "path" attribute is resolved as an entry of the bundle that calls LiferaySetup, so the
+    paths are relative to the root of this bundle jar (src/main/resources).
+-->
+<setup xmlns="http://www.ableneo.com/liferay/setup">
+
+    <configuration>
+        <company>
+            <companywebid>liferay.com</companywebid>
+        </company>
+    </configuration>
+
+    <sites>
+        <site name="Demo Site" site-friendly-url="/demo-site" membership-type="2">
+
+            <!-- Documents and Media -->
+            <document-folder folder-name="Demo Documents" create-if-not-exists="true">
+                <role-permissions>
+                    <role-permission role-name="Guest">
+                        <permission-action action-name="VIEW"/>
+                    </role-permission>
+                </role-permissions>
+            </document-folder>
+            <document document-title="Demo Document" document-filename="demo-document.txt"
+                      document-folder-name="Demo Documents" file-system-name="data/demo-document.txt"/>
+
+            <!-- Web content structure, template and the article that uses them -->
+            <article-structure key="demo-article" name="Demo Article"
+                               path="data/demo-article-structure.json"/>
+            <article-template key="demo-article-template" name="Demo Article Template"
+                              path="data/demo-article-template.ftl" article-structure-key="demo-article"
+                              cacheable="true"/>
+            <article-folder folder-path="Demo Articles" description="Articles created by the demo"/>
+            <article articleId="DEMO-ARTICLE-1" title="Demo Article"
+                     article-description="Article created by liferay-db-setup-core"
+                     article-structure-key="demo-article" article-template-key="demo-article-template"
+                     article-folder-path="Demo Articles" path="data/demo-article-content.xml">
+                <title-translation locale="en_US" text="Demo Article"/>
+                <tag name="demo"/>
+                <role-permissions>
+                    <role-permission role-name="Guest">
+                        <permission-action action-name="VIEW"/>
+                    </role-permission>
+                </role-permissions>
+            </article>
+
+            <!-- Application display template for the Asset Publisher portlet used on the pages -->
+            <adt name="Demo Asset Publisher ADT" template-key="DEMO-ASSET-PUBLISHER-ADT"
+                 description="Asset publisher template created by the demo" language="ftl"
+                 class-name="com.liferay.asset.kernel.model.AssetEntry"
+                 path="data/demo-asset-publisher-adt.ftl" cacheable="true"/>
+
+            <!-- Categorization -->
+            <vocabulary name="Demo Topics" description="Topics used by the demo content"
+                        multi-valued="true">
+                <title-translation locale="en_US" text="Demo Topics"/>
+                <category name="Product" description="Product related content">
+                    <title-translation locale="en_US" text="Product"/>
+                    <category name="Release Notes"/>
+                </category>
+                <category name="Engineering"/>
+            </vocabulary>
+
+            <!--
+                Dynamic data lists. A structure whose class is not JournalArticle is created
+                through the plain DDM service, because the data engine only knows content types
+                for web content and the document library.
+            -->
+            <ddl-structure key="demo-ddl" name="Demo List Structure" path="data/demo-ddl-structure.json"/>
+            <ddl-recordset key="demo-ddl-recordset" name="Demo List"
+                           description="Dynamic data list created by the demo"
+                           ddl-structure-key="demo-ddl"/>
+
+            <custom-field-setting key="demo-site-note" value="Created by liferay-db-setup-core"/>
+
+            <membership>
+                <user-group-as-member user-group-name="Demo Editors">
+                    <role name="Demo Site Member"/>
+                </user-group-as-member>
+                <user-as-member screen-name="demo.editor">
+                    <role name="Demo Site Member"/>
+                </user-as-member>
+            </membership>
+
+            <site-preferences>
+                <inheritLocales>false</inheritLocales>
+                <languageId>en_US</languageId>
+                <locales>en_US</locales>
+                <mentionsEnabled>true</mentionsEnabled>
+                <sharingEnabled>false</sharingEnabled>
+            </site-preferences>
+        </site>
+    </sites>
+
+    <custom-fields>
+        <field name="demo-site-note" type="string" class-name="com.liferay.portal.kernel.model.Group"/>
+    </custom-fields>
+
+</setup>

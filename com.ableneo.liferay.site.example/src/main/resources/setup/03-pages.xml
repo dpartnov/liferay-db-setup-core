@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Step 3 of the demo: the pages of the site and the navigation that links them.
+
+    Covered data types: public and private pages including nested pages, portlets placed on a
+    page with their preferences, page level permissions and custom fields, page order through
+    page-sequence, site navigation menus and page templates.
+
+    A page-portlet "portlet-id" is the portlet name as registered in the portal. Preferences are
+    the same key/value pairs the portlet stores when configured through the UI.
+-->
+<setup xmlns="http://www.ableneo.com/liferay/setup">
+
+    <configuration>
+        <company>
+            <companywebid>liferay.com</companywebid>
+        </company>
+    </configuration>
+
+    <!--
+        Grants portal wide permissions on a resource to roles. Unlike <define-permissions> on a
+        role this is expressed resource first, which is handy when one resource is shared by
+        several roles.
+
+        It has to run in a later step than the roles it references: the library applies
+        resource-permissions while it is still company scoped, which is before roles are created.
+    -->
+    <resource-permissions>
+        <resource resource-id="com_liferay_journal_web_portlet_JournalPortlet">
+            <actionId name="ACCESS_IN_CONTROL_PANEL">
+                <role name="Demo Editor"/>
+            </actionId>
+        </resource>
+    </resource-permissions>
+
+    <sites>
+        <site name="Demo Site" site-friendly-url="/demo-site">
+
+            <public-pages language-id="en_US" delete-existing-pages="false">
+                <page name="Home" friendly-url="/home" page-sequence="0">
+                    <!-- Nested page, the hierarchy is expressed by nesting <page> elements. -->
+                    <page name="About" friendly-url="/about" page-sequence="0">
+                        <title-translation locale="en_US" text="About this demo"/>
+                    </page>
+
+                    <page-portlet portlet-id="com_liferay_journal_content_web_portlet_JournalContentPortlet"
+                                  column="column-1" column-position="0">
+                        <portlet-preference key="articleId">DEMO-ARTICLE-1</portlet-preference>
+                        <portlet-preference key="ddmTemplateKey">demo-article-template</portlet-preference>
+                    </page-portlet>
+
+                    <title-translation locale="en_US" text="Home"/>
+                    <custom-field-setting key="demo-page-note" value="Created by liferay-db-setup-core"/>
+
+                    <role-permissions clear-permissions="false">
+                        <role-permission role-name="Guest">
+                            <permission-action action-name="VIEW"/>
+                        </role-permission>
+                        <role-permission role-name="Demo Site Member">
+                            <permission-action action-name="VIEW"/>
+                            <permission-action action-name="UPDATE"/>
+                        </role-permission>
+                    </role-permissions>
+                </page>
+
+                <page name="News" friendly-url="/news" page-sequence="1">
+                    <page-portlet portlet-id="com_liferay_asset_publisher_web_portlet_AssetPublisherPortlet"
+                                  column="column-1" column-position="0">
+                        <!-- Renders the asset list with the ADT created in step 2. -->
+                        <portlet-preference key="displayStyle">ddmTemplate_DEMO-ASSET-PUBLISHER-ADT</portlet-preference>
+                        <portlet-preference key="selectionStyle">dynamic</portlet-preference>
+                    </page-portlet>
+                    <title-translation locale="en_US" text="News"/>
+                </page>
+
+                <!--
+                    A page that only links somewhere else. Setting "link-to-url" is enough, the
+                    library creates the page as a Liferay URL layout.
+                -->
+                <page name="Ableneo" friendly-url="/ableneo" page-sequence="2"
+                      link-to-url="https://www.ableneo.com" target="_blank"/>
+            </public-pages>
+
+            <private-pages language-id="en_US" delete-existing-pages="false">
+                <page name="Editors" friendly-url="/editors">
+                    <page-portlet portlet-id="com_liferay_site_navigation_menu_web_portlet_SiteNavigationMenuPortlet"
+                                  column="column-1" column-position="0"/>
+                    <role-permissions clear-permissions="false">
+                        <role-permission role-name="Demo Site Member">
+                            <permission-action action-name="VIEW"/>
+                        </role-permission>
+                    </role-permissions>
+                </page>
+            </private-pages>
+
+            <!--
+                Site navigation menu. An item with nested <menuItem> elements becomes a node
+                (submenu), any other item becomes a URL link. "type-settings" is a Liferay
+                UnicodeProperties string, so the entries are separated by newlines (&#10;).
+            -->
+            <menu name="Demo Navigation" clear-beforehand="true">
+                <menuItem name="Home" type="url"
+                          type-settings="url=/web/demo-site/home&#10;name=Home&#10;defaultLanguageId=en_US"/>
+                <menuItem name="Content" type="node" type-settings="defaultLanguageId=en_US&#10;name=Content">
+                    <menuItem name="News" type="url"
+                              type-settings="url=/web/demo-site/news&#10;name=News&#10;defaultLanguageId=en_US"/>
+                    <menuItem name="About" type="url"
+                              type-settings="url=/web/demo-site/home/about&#10;name=About&#10;defaultLanguageId=en_US"/>
+                </menuItem>
+            </menu>
+        </site>
+    </sites>
+
+    <!--
+        Page templates live in the global scope and can be applied to pages of any site through
+        the Liferay UI.
+    -->
+    <page-templates>
+        <page-template name="Demo Page Template">
+            <!--
+                The XSD requires friendly-url, but a page template page must not have one.
+                Leave it empty.
+            -->
+            <page name="Demo Page Template" friendly-url="">
+                <page-portlet portlet-id="com_liferay_journal_content_web_portlet_JournalContentPortlet"
+                              column="column-1" column-position="0"/>
+            </page>
+        </page-template>
+    </page-templates>
+
+</setup>
