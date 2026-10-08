@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Liferay version: DXP 2026.Q1.9 (see compatibility matrix in README.adoc). Liferay Portal CE ended at 7.4.3.132, the library targets DXP quarterly releases only.
 - Liferay artifacts are resolved from `https://repository-cdn.liferay.com/nexus/content/groups/public`, they are no longer published to Maven Central.
 - The portal is Jakarta based: use `jakarta.portlet` and `jakarta.xml.bind`, never the `javax` equivalents.
-- Java 21 (with `--enable-preview`), Maven 3.8.1+, BND for OSGi manifest
+- Java 21, Maven 3.8.1+, BND for OSGi manifest
 - `nix-shell` (or direnv) provides a ready build environment - see CONTRIBUTING.adoc
 
 ## Build & Test Commands
