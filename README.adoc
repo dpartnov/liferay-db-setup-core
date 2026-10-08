@@ -487,6 +487,7 @@ They are probably not perfect, please let me know if anything feels wrong or inc
 * `custom-field-setting` of a `user` is applied. It was looked up under the implementation class while expando tables are keyed by the model interface
 * an `article` that already exists is overwritten instead of failing with a `ClassCastException`
 * pages, portlet preferences and page themes are saved without an `OptimisticLockException`
+* a page is created with the `name` attribute as its layout name. Name and title were built from one shared map, so a `title-translation` in a locale other than the site default leaked into the technical page name
 
 ==== Refactorings & project changes
 * upgraded to Liferay DXP 2026.Q1.9, the library now targets DXP quarterly releases instead of Portal CE
