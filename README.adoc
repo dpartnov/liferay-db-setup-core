@@ -399,6 +399,7 @@ They are probably not perfect, please let me know if anything feels wrong or inc
 === Version 7.4.3125.3
 ==== Features & bug fixes
 * added optional `page-sequence` page attribute that controls the position of a page in the navigation menu, the value maps directly to the Liferay layout priority <<_page_order_in_the_navigation_menu>>
+* a page is created with the `name` attribute as its layout name. Name and title were built from one shared map, so a `title-translation` in a locale other than the site default leaked into the technical page name
 
 ==== Refactorings & project changes
 * migrated remaining classes from Liferay kernel Log to SLF4J
