@@ -354,35 +354,26 @@ public final class SetupPages {
         for (PageType page : pages) {
             Layout layout = null;
             try {
+                // getFriendlyURLLayout either returns a layout or throws NoSuchLayoutException,
+                // it never returns null
                 layout = LayoutLocalServiceUtil.getFriendlyURLLayout(groupId, isPrivate, page.getFriendlyUrl());
-                LOG.info(String.format("Setup: Page %1$s already exist, not creating...", page.getName()));
-                if (layout != null && page.isDeleteExistingPages()) {
+                if (page.isDeleteExistingPages()) {
+                    // Liferay removes the child layouts, the custom fields, the portlet preferences
+                    // and the draft layout along with the page, so the page is recreated from scratch
+                    LOG.info("Setup: Page {} exists, deleting it and creating it again...", page.getName());
                     LayoutLocalServiceUtil.deleteLayout(layout);
-                    if (page.getLinkToUrl() == null || page.getLinkToUrl().equals("")) {
-                        layout = createPage(groupId, page, parentLayoutId, isPrivate);
-                    } else {
-                        layout = createLinkPage(page, groupId, parentLayoutId, userId);
-                    }
-                } else if (layout != null && (page.getLinkToUrl() != null && !page.getLinkToUrl().equals(""))) {
+                    layout = createOrLinkPage(page, groupId, parentLayoutId, isPrivate, userId);
+                } else if (hasLinkToUrl(page)) {
+                    LOG.info("Setup: Page {} exists, updating its link target...", page.getName());
                     updateLinkPage(page, groupId);
                 } else {
-                    LOG.warn(
-                        String.format(
-                            "Setup: unhandled 'else' while creatng page[%1$s]/layout[%2$s]",
-                            page.getName(),
-                            page.getLayout()
-                        )
-                    );
+                    LOG.info("Setup: Page {} exists, keeping it and updating its content...", page.getName());
                 }
             } catch (NoSuchLayoutException e) {
-                if (page.getLinkToUrl() == null || page.getLinkToUrl().equals("")) {
-                    layout = createPage(groupId, page, parentLayoutId, isPrivate);
-                } else {
-                    layout = createLinkPage(page, groupId, parentLayoutId, userId);
-                }
-                LOG.info(String.format("Setup: Page %1$s created...", page.getName()));
+                layout = createOrLinkPage(page, groupId, parentLayoutId, isPrivate, userId);
+                LOG.info("Setup: Page {} created...", page.getName());
             } catch (Exception ex) {
-                LOG.error("Error", ex);
+                LOG.error("Setup: cannot set up page {}", page.getFriendlyUrl(), ex);
             }
             // If the page has not a layout set, set the default one. Otherwise set that layout as the default for the
             // subtree
@@ -409,6 +400,30 @@ public final class SetupPages {
             }
         }
         applyPageSequences(sequencedLayouts);
+    }
+
+    /**
+     * Plain predicate, unlike {@link #isLinkPage(PageType)} which also logs a rejection message
+     * and is meant for the page clearing path alone.
+     */
+    private static boolean hasLinkToUrl(final PageType page) {
+        return page.getLinkToUrl() != null && !page.getLinkToUrl().isEmpty();
+    }
+
+    /**
+     * Creates the layout for a page, either a regular one or a link to an URL.
+     */
+    private static Layout createOrLinkPage(
+        final PageType page,
+        final long groupId,
+        final long parentLayoutId,
+        final boolean isPrivate,
+        final long userId
+    ) throws PortalException {
+        if (hasLinkToUrl(page)) {
+            return createLinkPage(page, groupId, parentLayoutId, userId);
+        }
+        return createPage(groupId, page, parentLayoutId, isPrivate);
     }
 
     /**
@@ -1252,8 +1267,12 @@ public final class SetupPages {
         try {
             LayoutLocalServiceUtil.deleteLayouts(groupId, privatePages, serviceContext);
             LOG.info("Setup: Pages removed.");
-        } catch (PortalException | SystemException e) {
-            LOG.error(String.format("cannot remove pages: %1$s", e));
+        } catch (Exception e) {
+            // Catching Exception on purpose: a RuntimeException thrown by the portal (observed with
+            // LockManagerUtil during startup, before the OSGi service is bound) used to abort the whole
+            // setup run with half of the pages already deleted. The page setup continues instead and
+            // addPages reconciles whatever is left.
+            LOG.error("Setup: cannot remove the {} pages of group {}", privatePages ? "private" : "public", groupId, e);
         }
     }
 

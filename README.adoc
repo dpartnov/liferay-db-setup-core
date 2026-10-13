@@ -488,6 +488,9 @@ They are probably not perfect, please let me know if anything feels wrong or inc
 * an `article` that already exists is overwritten instead of failing with a `ClassCastException`
 * pages, portlet preferences and page themes are saved without an `OptimisticLockException`
 * a page is created with the `name` attribute as its layout name. Name and title were built from one shared map, so a `title-translation` in a locale other than the site default leaked into the technical page name
+* `delete-existing-pages` on `public-pages` and `private-pages` no longer aborts the whole setup when the portal throws an unchecked exception, and the stack trace is logged. Only `PortalException` and `SystemException` were caught, so a `NullPointerException` from `LockManagerUtil` raised when the setup runs before that service is bound ended the run with part of the pages already deleted
+* `delete-liferay-objects` with `deleteMethod="onlyListed"` deletes the listed sites. The group was looked up by the current `groupId` where `GroupLocalServiceUtil.getGroup` expects a `companyId`, so every delete failed with `NoSuchGroupException`
+* `delete-liferay-objects` with `deleteMethod="excludeListed"` matches a site by its group key and only considers the top level sites of the company the setup runs in. It compared `Group.getName()`, which holds the localized name XML and never equals the configured `name`, against every group of every company including organization, user and staging groups
 
 ==== Refactorings & project changes
 * upgraded to Liferay DXP 2026.Q1.9, the library now targets DXP quarterly releases instead of Portal CE
@@ -496,6 +499,7 @@ They are probably not perfect, please let me know if anything feels wrong or inc
 * field names of an article structure are normalized by `DataDefinitionFieldNameNormalizer`, an own implementation that removed the `maven-shade-plugin` and the dependency on the Liferay internal package `com.liferay.journal.web.internal.util`. The instance id appended to a field name is derived from the field reference instead of being random, so the same structure file produces the same field names on every run and on every environment
 * adopted the new `externalReferenceCode` parameter of `addGroup`, `addRole` and `addUserGroup`
 * switched the version scheme to `<liferay-year>.<liferay-quarter>.<liferay-patch>.<module-revision>`
+* page setup logs what it actually does with a page that already exists: keeps it, deletes and recreates it, or updates its link target. It used to log `Setup: Page ... already exist, not creating...` even when the page was about to be deleted and created again, and to warn `Setup: unhandled 'else' ...` for the ordinary case of an existing page that is kept
 
 === Version 7.4.3125.3
 ==== Features & bug fixes
