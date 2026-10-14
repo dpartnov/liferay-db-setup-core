@@ -20,6 +20,9 @@ import com.ableneo.liferay.portal.setup.domain.Site;
 import com.ableneo.liferay.portal.setup.domain.Theme;
 import com.liferay.dynamic.data.mapping.model.DDMTemplate;
 import com.liferay.dynamic.data.mapping.service.DDMTemplateLocalServiceUtil;
+import com.liferay.friendly.url.exception.DuplicateFriendlyURLEntryException;
+import com.liferay.friendly.url.model.FriendlyURLEntryLocalization;
+import com.liferay.friendly.url.service.FriendlyURLEntryLocalServiceUtil;
 import com.liferay.journal.model.JournalArticle;
 import com.liferay.petra.string.CharPool;
 import com.liferay.petra.string.StringPool;
@@ -353,12 +356,9 @@ public final class SetupPages {
         for (PageType page : pages) {
             Layout layout = null;
             try {
-                // getFriendlyURLLayout either returns a layout or throws NoSuchLayoutException,
-                // it never returns null
+                // throws NoSuchLayoutException when the page does not exist, never returns null
                 layout = LayoutLocalServiceUtil.getFriendlyURLLayout(groupId, isPrivate, page.getFriendlyUrl());
                 if (page.isDeleteExistingPages()) {
-                    // Liferay removes the child layouts, the custom fields, the portlet preferences
-                    // and the draft layout along with the page, so the page is recreated from scratch
                     LOG.info("Setup: Page {} exists, deleting it and creating it again...", page.getName());
                     LayoutLocalServiceUtil.deleteLayout(layout);
                     layout = createOrLinkPage(page, groupId, parentLayoutId, isPrivate, userId);
@@ -401,17 +401,11 @@ public final class SetupPages {
         applyPageSequences(sequencedLayouts);
     }
 
-    /**
-     * Plain predicate, unlike {@link #isLinkPage(PageType)} which also logs a rejection message
-     * and is meant for the page clearing path alone.
-     */
+    /** Plain predicate, {@link #isLinkPage(PageType)} also logs and belongs to the page clearing path. */
     private static boolean hasLinkToUrl(final PageType page) {
         return page.getLinkToUrl() != null && !page.getLinkToUrl().isEmpty();
     }
 
-    /**
-     * Creates the layout for a page, either a regular one or a link to an URL.
-     */
     private static Layout createOrLinkPage(
         final PageType page,
         final long groupId,
@@ -664,6 +658,29 @@ public final class SetupPages {
         Map<Locale, String> friendlyURLMap = new HashMap<>();
         friendlyURLMap.put(locale, currentPage.getFriendlyUrl());
 
+        try {
+            return addLayout(groupId, currentPage, parentLayoutId, isPrivate, nameMap, titleMap, friendlyURLMap);
+        } catch (Exception e) {
+            if (!isCausedByDuplicateFriendlyURLEntry(e)) {
+                throw e;
+            }
+            // retry once, the friendly URL may only be held by a leftover of an already deleted page
+            if (!removeOrphanedFriendlyURLEntry(groupId, isPrivate, currentPage.getFriendlyUrl())) {
+                throw e;
+            }
+            return addLayout(groupId, currentPage, parentLayoutId, isPrivate, nameMap, titleMap, friendlyURLMap);
+        }
+    }
+
+    private static Layout addLayout(
+        final long groupId,
+        final PageType currentPage,
+        final long parentLayoutId,
+        final boolean isPrivate,
+        final Map<Locale, String> nameMap,
+        final Map<Locale, String> titleMap,
+        final Map<Locale, String> friendlyURLMap
+    ) throws PortalException {
         return LayoutLocalServiceUtil.addLayout(
             null,
             SetupConfigurationThreadLocal.getRunAsUserId(),
@@ -681,6 +698,66 @@ public final class SetupPages {
             friendlyURLMap,
             new ServiceContext()
         );
+    }
+
+    /** addLayout reports it wrapped in a ModelListenerException. */
+    private static boolean isCausedByDuplicateFriendlyURLEntry(final Throwable throwable) {
+        for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
+            if (cause instanceof DuplicateFriendlyURLEntryException) {
+                return true;
+            }
+            if (cause.getCause() == cause) {
+                break;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Frees a friendly URL still held by the FriendlyURLEntry of an already deleted page. Liferay
+     * deletes those from LayoutModelListener, an OSGi component, so a page deleted while that
+     * component is down keeps its entry and the URL stays blocked.
+     *
+     * @return whether a leftover entry was found and removed
+     */
+    private static boolean removeOrphanedFriendlyURLEntry(
+        final long groupId,
+        final boolean isPrivate,
+        final String friendlyUrl
+    ) {
+        try {
+            // layout friendly URLs are keyed by Layout-false / Layout-true, not by Layout
+            long classNameId = ClassNameLocalServiceUtil.getClassNameId(
+                Layout.class.getName() + StringPool.DASH + isPrivate
+            );
+            FriendlyURLEntryLocalization localization =
+                FriendlyURLEntryLocalServiceUtil.fetchFriendlyURLEntryLocalization(groupId, classNameId, friendlyUrl);
+            if (localization == null) {
+                return false;
+            }
+            Layout layout = LayoutLocalServiceUtil.fetchLayout(localization.getClassPK());
+            if (layout != null) {
+                LOG.error(
+                    "Setup: friendly URL {} of group {} is already used by page {} (plid {}), " +
+                    "two pages cannot share one friendly URL",
+                    friendlyUrl,
+                    groupId,
+                    layout.getName(LocaleUtil.getSiteDefault()),
+                    layout.getPlid()
+                );
+                return false;
+            }
+            FriendlyURLEntryLocalServiceUtil.deleteFriendlyURLEntry(groupId, classNameId, localization.getClassPK());
+            LOG.warn(
+                "Setup: removed the friendly URL entry {} left behind by the deleted page with plid {}",
+                friendlyUrl,
+                localization.getClassPK()
+            );
+            return true;
+        } catch (Exception e) {
+            LOG.error("Setup: cannot inspect the friendly URL entry of {} in group {}", friendlyUrl, groupId, e);
+            return false;
+        }
     }
 
     private static void setCustomFields(
@@ -1268,17 +1345,18 @@ public final class SetupPages {
         }
     }
 
-    private static void deletePages(final long groupId, boolean privatePages) {
+    private static void deletePages(final long groupId, boolean privatePages) throws PortalException {
         ServiceContext serviceContext = new ServiceContext();
         try {
             LayoutLocalServiceUtil.deleteLayouts(groupId, privatePages, serviceContext);
             LOG.info("Setup: Pages removed.");
         } catch (Exception e) {
-            // Catching Exception on purpose: a RuntimeException thrown by the portal (observed with
-            // LockManagerUtil during startup, before the OSGi service is bound) used to abort the whole
-            // setup run with half of the pages already deleted. The page setup continues instead and
-            // addPages reconciles whatever is left.
+            // logged for the stack trace, rethrown because the pages added next assume an empty site
             LOG.error("Setup: cannot remove the {} pages of group {}", privatePages ? "private" : "public", groupId, e);
+            throw new PortalException(
+                String.format("Cannot remove the %s pages of group %d", privatePages ? "private" : "public", groupId),
+                e
+            );
         }
     }
 

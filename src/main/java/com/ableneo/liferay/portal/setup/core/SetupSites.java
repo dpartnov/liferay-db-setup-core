@@ -555,9 +555,7 @@ public class SetupSites {
         switch (deleteMethod) {
             case "excludeListed":
                 Set<String> groupKeysToKeep = collectGroupKeys(sites);
-                // Only the top level sites of the company the setup runs in: the previous
-                // getGroups(ALL_POS, ALL_POS) also returned organization, user and staging groups
-                // of every company on the portal.
+                // top level sites of this company only, never organization, user or staging groups
                 for (Group siteGroup : GroupLocalServiceUtil.getGroups(
                     companyId,
                     GroupConstants.DEFAULT_PARENT_GROUP_ID,
@@ -581,8 +579,6 @@ public class SetupSites {
 
     private static void deleteLiferayGroup(long companyId, String groupKey) {
         try {
-            // getGroup takes a companyId, the previous code passed a groupId here which made every
-            // delete fail with NoSuchGroupException
             deleteLiferayGroup(GroupLocalServiceUtil.getGroup(companyId, groupKey));
         } catch (Exception e) {
             LOG.error("Cannot delete site {}: no such site in company {}", groupKey, companyId, e);
@@ -590,8 +586,7 @@ public class SetupSites {
     }
 
     private static void deleteLiferayGroup(Group siteGroup) {
-        // getGroupKey is the technical site identifier that setupSite derives from <site name="...">.
-        // Group.getName() holds the localized XML and never matches the configured name.
+        // groupKey matches <site name="...">, getName() would return the localized name XML
         String groupKey = siteGroup.getGroupKey();
         try {
             GroupLocalServiceUtil.deleteGroup(siteGroup.getGroupId());
